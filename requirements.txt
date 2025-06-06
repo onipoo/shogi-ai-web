@@ -1,6 +1,5 @@
 flask
 gunicorn
-shogi
 requests
 python-shogi
 numpy
