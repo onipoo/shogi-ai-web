@@ -23,7 +23,3 @@ def get_ai_move(player_move):
 
     return ai_move.usi()
 
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
