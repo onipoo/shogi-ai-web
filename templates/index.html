@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>将棋AI</title>
+</head>
+<body>
+  <h1>将棋AIと対局</h1>
+  <input id="moveInput" placeholder="あなたの手を入力（例：7g7f）">
+  <button onclick="sendMove()">送信</button>
+  <p id="aiMove">AIの手: </p>
+
+  <script>
+    function sendMove() {
+      const move = document.getElementById("moveInput").value;
+      fetch("/move", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ player_move: move })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("aiMove").innerText = "AIの手: " + data.ai_move;
+      });
+    }
+  </script>
+</body>
+</html>
