@@ -7,15 +7,12 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-@app.route('/move', methods=['POST'])
-def move():
+@app.route("/get_ai_move", methods=["POST"])
+def get_ai_move_route():
     data = request.get_json()
-    player_move = data.get('player_move')
-
-    # AIの手を計算（仮にget_ai_moveという関数名だとする）
-    ai_move = get_ai_move(player_move)
-
-    return jsonify({'ai_move': ai_move})
+    sfen = data.get("sfen")
+    ai_move = get_ai_move(sfen)  # 自作AIの関数（sfenを渡す想定）
+    return jsonify({"ai_move_sfen": ai_move})
 
 
 

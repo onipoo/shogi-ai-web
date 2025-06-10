@@ -1,30 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>将棋AI</title>
+  <title>将棋AI対戦</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='shogi.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
 <body>
-  <h1>将棋AIと対局</h1>
-  <input id="moveInput" placeholder="あなたの手を入力（例：7g7f）">
-  <button onclick="sendMove()">送信</button>
-  <p id="aiMove">AIの手: </p>
+  <h1>将棋AIと対戦</h1>
 
-  <script>
-    function sendMove() {
-      const move = document.getElementById("moveInput").value;
-      fetch("/move", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ player_move: move })
-      })
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("aiMove").innerText = "AIの手: " + data.ai_move;
-      });
-    }
-  </script>
+  <div id="board"></div>
+
+  <div>
+    <button onclick="resetBoard()">リセット</button>
+    <button onclick="getAiMove()">AIの手を打たせる</button>
+  </div>
 </body>
 </html>

@@ -1,0 +1,4 @@
+webサービスストップ
+Start Commandをexit 1とする
+webサービス開始
+Start Commandをpython app.pyとする
