@@ -1,20 +1,15 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>将棋AI対戦</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="{{ url_for('static', filename='shogi.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='script.js') }}" defer></script>
 </head>
 <body>
-  <h1>将棋AIと対戦</h1>
-
+  <h1>将棋AIと対戦！</h1>
   <div id="board"></div>
 
-  <div>
-    <button onclick="resetBoard()">リセット</button>
-    <button onclick="getAiMove()">AIの手を打たせる</button>
-  </div>
+  <script src="https://murosan.github.io/shogi-board/dist/shogi-board.min.js"></script>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

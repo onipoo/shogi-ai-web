@@ -1,16 +1,12 @@
 body {
   font-family: sans-serif;
-  background: #f2f2f2;
-  padding: 20px;
   text-align: center;
+  background-color: #f9f9f9;
 }
-
 #board {
-  display: grid;
-  grid-template-columns: repeat(9, 50px);
-  grid-template-rows: repeat(9, 50px);
+  width: 400px;
+  aspect-ratio: 1 / 1;
   margin: 20px auto;
-  border: 2px solid #000;
 }
 
 .square {

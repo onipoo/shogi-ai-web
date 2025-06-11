@@ -1,24 +1,33 @@
 from flask import Flask, render_template, request, jsonify
-from shogi_ai import get_ai_move  # あなたのAI関数を使う想定
+import shogi
+from shogi_ai import get_ai_move
 
 app = Flask(__name__)
+board = shogi.Board()
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route("/get_ai_move", methods=["POST"])
-def get_ai_move_route():
-    data = request.get_json()
-    sfen = data.get("sfen")
-    ai_move = get_ai_move(sfen)  # 自作AIの関数（sfenを渡す想定）
-    return jsonify({"ai_move_sfen": ai_move})
+@app.route('/move', methods=['POST'])
+def move():
+    global board
+    data = request.json
+    user_move = data.get('move')
 
+    try:
+        # ユーザーの手を盤に反映
+        board.push_usi(user_move)
 
+        # AIの手を生成して盤に反映
+        ai_move = get_ai_move(board)
+        board.push_usi(ai_move)
 
+        return jsonify({'ai_move': ai_move})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=False, host="0.0.0.0", port=port)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
