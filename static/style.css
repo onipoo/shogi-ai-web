@@ -4,9 +4,9 @@ body {
   background-color: #f9f9f9;
 }
 #board {
-  width: 400px;
-  aspect-ratio: 1 / 1;
-  margin: 20px auto;
+  width: 360px;
+  height: 360px;
+  margin: 0 auto;
 }
 
 .square {
