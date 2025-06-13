@@ -1,16 +1,17 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>将棋AI対戦</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shogiboardjs@1.0.0/dist/shogiboardjs.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <h1>将棋AIと対戦！</h1>
-  <div id="board"></div>
+  <h1>onipoo将棋</h1>
+  <div id="white-hands" class="hands"></div>  <!-- 後手（上） -->
+  <div id="board"></div>                      <!-- 将棋盤 -->
+  <div id="black-hands" class="hands"></div>  <!-- 先手（下） -->
+  <button onclick="resetGame()">リセット</button>
 
-  <script src="https://cdn.jsdelivr.net/npm/shogiboardjs@1.0.0/dist/shogiboardjs.min.js"></script>
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+render
+webサービスストップ
+Start Commandをexit 1とする
+webサービス開始
+Start Commandをpython app.pyとする
+
+
+ローカル起動方法
+python app.py
+http://127.0.0.1:5000 で確認
