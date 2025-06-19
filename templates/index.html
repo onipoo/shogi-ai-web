@@ -10,6 +10,13 @@
   <div id="white-hands" class="hands"></div>  <!-- 後手（上） -->
   <div id="board"></div>                      <!-- 将棋盤 -->
   <div id="black-hands" class="hands"></div>  <!-- 先手（下） -->
+  <!-- 棋譜表示エリア -->
+  <div id="kifu-log"
+     style="margin-top: 1em; white-space: pre-line; font-family: monospace; font-size: 1em;
+            background: #f9f9f9; border: 1px solid #ccc; padding: 0.5em;
+            height: 200px; overflow-y: auto;">
+  </div>
+  </div>
   <button onclick="resetGame()">リセット</button>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>

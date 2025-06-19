@@ -1,115 +1,115 @@
 let selected = null;
 let boardState = [];
 let hands = { black: {}, white: {} };
-let selectedHandPiece = null;  // クリックされた持ち駒
+let selectedHandPiece = null;
+let moveCount = 0;
+const kifuLog = [];
 
-async function fetchBoardState() {
-  try {
-    const res = await fetch("/board");
-    const data = await res.json();
+const fileMap = { 0: "９", 1: "８", 2: "７", 3: "６", 4: "５", 5: "４", 6: "３", 7: "２", 8: "１" };
+const rankMap = { 0: "一", 1: "二", 2: "三", 3: "四", 4: "五", 5: "六", 6: "七", 7: "八", 8: "九" };
 
-    // 🔽 ここに挿入！
-    boardState = parseSFEN(data.sfen.split(" ")[0]);
-    hands = data.hands;
-    drawBoard();
-    drawHands();
-  } catch (err) {
-    console.error("盤面の取得に失敗:", err);
-    alert("盤面データの取得に失敗しました");
+function usiToHuman(usiSq) {
+  const file = parseInt(usiSq[0]);
+  const rank = "abcdefghi".indexOf(usiSq[1]) + 1;
+  return `${file}${rank}`;
+}
+
+function usiToKifu(usi, piece, isGote, fromSq = null) {
+  const file = parseInt(usi[2]);
+  const rankIndex = "abcdefghi".indexOf(usi[3]);
+  const toPos = file + "一二三四五六七八九"[rankIndex];
+  const turnSymbol = isGote ? "△" : "▲";
+  const src = fromSq ? `(${usiToHuman(fromSq)})` : "(打)";
+
+  if (usi.length === 5 && usi[4] === "+") {
+    piece += "成";
   }
+
+  moveCount += 1;
+  return `${moveCount} ${turnSymbol}${toPos}${piece}${src}`;
+}
+
+function appendKifu(usi, piece, isGote, fromSq = null) {
+  const line = usiToKifu(usi, piece, isGote, fromSq);
+  kifuLog.push(line);
+  const log = document.getElementById("kifu-log");
+  if (log) log.innerText = kifuLog.join("\n");
+}
+
+function pieceSymbol(k) {
+  return {
+    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王"
+  }[k.toUpperCase()] || "?";
 }
 
 function parseSFEN(sfen) {
   const rows = sfen.split("/");
   const board = [];
-
   for (let row of rows) {
     const parsedRow = [];
     for (let i = 0; i < row.length; i++) {
       const char = row[i];
-
       if (!isNaN(char)) {
-        for (let j = 0; j < parseInt(char); j++) {
-          parsedRow.push(null);
-        }
+        for (let j = 0; j < parseInt(char); j++) parsedRow.push(null);
       } else {
         let gote = char === char.toLowerCase();
         let pieceCode = char;
-
-        // 成り駒処理：「+P」など
         if (char === "+") {
           i++;
           pieceCode = row[i];
           gote = pieceCode === pieceCode.toLowerCase();
           pieceCode = "+" + pieceCode;
         }
-
         const pieceMap = {
           P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王",
           p: "歩", l: "香", n: "桂", s: "銀", g: "金", b: "角", r: "飛", k: "玉",
           "+P": "と", "+L": "成香", "+N": "成桂", "+S": "成銀", "+B": "馬", "+R": "竜",
           "+p": "と", "+l": "成香", "+n": "成桂", "+s": "成銀", "+b": "馬", "+r": "竜"
         };
-
-        const piece = pieceMap[pieceCode] || "?";
-        parsedRow.push({ piece, gote });
+        parsedRow.push({ piece: pieceMap[pieceCode] || "？", gote });
       }
     }
     board.push(parsedRow);
   }
-
   return board;
 }
 
-
-async function resetGame() {
+async function fetchBoardState() {
   try {
-    const res = await fetch("/reset", { method: "POST" });
+    const res = await fetch("/board");
     const data = await res.json();
-    if (res.ok) {
-      await fetchBoardState();  // 初期状態を取得して描画
-    } else {
-      alert(`リセット失敗: ${data.error}`);
-    }
+    boardState = parseSFEN(data.sfen.split(" ")[0]);
+    hands = data.hands;
+    drawBoard();
+    drawHands();
   } catch (err) {
-    console.error("リセット通信エラー:", err);
-    alert("サーバーに接続できませんでした");
+    console.error("盤面の取得に失敗:", err);
   }
 }
-
 
 function drawBoard() {
   const board = document.getElementById("board");
   board.innerHTML = "";
-
   for (let y = 0; y < 9; y++) {
     for (let x = 0; x < 9; x++) {
       const cell = document.createElement("div");
       cell.className = "cell";
       cell.dataset.x = x;
       cell.dataset.y = y;
-
       const data = boardState[y][x];
       if (data) {
         cell.textContent = data.piece;
         if (data.gote) cell.classList.add("gote");
-      } else {
-        cell.textContent = "";
       }
-
       cell.addEventListener("click", () => onCellClick(x, y));
       board.appendChild(cell);
     }
   }
 }
 
-
 function drawHands() {
-  const container = (side) => document.getElementById(`${side}-hands`);
-
-  // 表示順を後手 → 先手 にすることで、上：後手／下：先手
   ["white", "black"].forEach(side => {
-    const el = container(side);
+    const el = document.getElementById(`${side}-hands`);
     el.innerHTML = "";
     Object.entries(hands[side]).forEach(([k, v]) => {
       if (v > 0) {
@@ -127,37 +127,22 @@ function drawHands() {
   });
 }
 
-function pieceSymbol(k) {
-  return {
-    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王"
-  }[k.toUpperCase()] || "?";
-}
-
-
-function toUsiSquare(x, y) {
-  const file = 9 - x;
-  const rank = String.fromCharCode(97 + y);  // y=0 → 'a', y=8 → 'i'
-  return `${file}${rank}`;
-}
-
-
 function isPromotable(piece) {
-  return ["歩", "銀", "桂", "角", "飛"].includes(piece);
+  return ["歩", "香", "銀", "桂", "角", "飛"].includes(piece);
 }
 
 function inPromotionZone(y) {
-  return y <= 2;  // 敵陣（上から0〜2段目）
+  return y <= 2;
 }
 
 async function onCellClick(x, y) {
-  const to = toUsiSquare(x, y);
+  const to = `${9 - x}${String.fromCharCode(97 + y)}`;
 
-  // ① 持ち駒から打つ場合
+  // 打ち駒処理
   if (selectedHandPiece) {
-    const moveData = {
-      from: `${selectedHandPiece.type}*`, // 例: "P*"
-      to: to
-    };
+    const moveData = { from: `${selectedHandPiece.type}*`, to };
+    const isGote = selectedHandPiece.side === "white";
+    const piece = pieceSymbol(moveData.from[0]);
 
     try {
       const res = await fetch("/move", {
@@ -167,58 +152,52 @@ async function onCellClick(x, y) {
       });
 
       const data = await res.json();
-      selectedHandPiece = null;
-      document.querySelectorAll(".piece").forEach(p => p.classList.remove("selected-hand"));
-
       if (!res.ok) {
         alert(`HTTP ${res.status} エラー: ${data.error}`);
         return;
       }
 
-      if (data.success) {
-        boardState = parseSFEN(data.board_sfen.split(" ")[0]);
-        hands = data.hands;
-        drawBoard();
-        drawHands();
+      appendKifu(`${moveData.from}${moveData.to}`, piece, isGote, null);
+      selectedHandPiece = null;
+      document.querySelectorAll(".piece").forEach(p => p.classList.remove("selected-hand"));
+      boardState = parseSFEN(data.board_sfen.split(" ")[0]);
+      hands = data.hands;
+      drawBoard();
+      drawHands();
 
-        if (data.game_over) {
-          alert(`詰みです！${data.winner}の勝ち`);
-          document.removeEventListener("click", onCellClick);
-        }
+      if (data.ai_move) {
+        handleAIMove(data.ai_move);
+      }
+
+      if (data.game_over) {
+        alert(`詰みです！${data.winner}の勝ち`);
       }
     } catch (err) {
       console.error("通信失敗:", err);
-      alert("サーバーとの通信に失敗しました");
     }
     return;
   }
 
-  // ② 通常の盤面移動
+  // 通常移動処理
   if (selected) {
     const [fromX, fromY] = selected;
-
     if (fromX === x && fromY === y) {
       selected = null;
       drawBoard();
       return;
     }
 
-    const from = toUsiSquare(fromX, fromY);
+    const from = `${9 - fromX}${String.fromCharCode(97 + fromY)}`;
     const pieceObj = boardState[fromY][fromX];
-
     let promote = false;
+
     if (pieceObj && isPromotable(pieceObj.piece)) {
-      const fromZone = inPromotionZone(fromY);
-      const toZone = inPromotionZone(y);
-      if (fromZone || toZone) {
+      if (inPromotionZone(fromY) || inPromotionZone(y)) {
         promote = confirm(`${pieceObj.piece} を成りますか？`);
       }
     }
 
-    const moveData = { from, to };
-    if (promote) {
-      moveData.promote = true;
-    }
+    const moveData = { from, to, promote };
 
     try {
       const res = await fetch("/move", {
@@ -230,30 +209,60 @@ async function onCellClick(x, y) {
       const data = await res.json();
       if (!res.ok) {
         alert(`HTTP ${res.status} エラー: ${data.error}`);
-        selected = null;
         return;
       }
+      
+      let fullUsi = from + to;
+      if (promote) fullUsi += "+";
+      appendKifu(fullUsi, pieceObj.piece, pieceObj.gote, from);
+      if (data.ai_move) {
+        handleAIMove(data.ai_move);
+      }
 
-      if (data.success) {
-        boardState = parseSFEN(data.board_sfen.split(" ")[0]);
-        hands = data.hands;
-        drawBoard();
-        drawHands();
+      boardState = parseSFEN(data.board_sfen.split(" ")[0]);
+      hands = data.hands;
+      drawBoard();
+      drawHands();
 
-        if (data.game_over) {
-          alert(`詰みです！${data.winner}の勝ち`);
-          document.removeEventListener("click", onCellClick);
-        }
+      if (data.game_over) {
+        alert(`詰みです！${data.winner}の勝ち`);
       }
     } catch (err) {
       console.error("通信失敗:", err);
-      alert("サーバーとの通信に失敗しました");
     }
 
     selected = null;
   } else {
     selected = [x, y];
     document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`).classList.add("selected");
+  }
+}
+
+function handleAIMove(usi) {
+  if (usi.includes("*")) {
+    const piece = pieceSymbol(usi[0]);
+    appendKifu(usi, piece, true, null);  // 打ち駒：gote = true
+  } else {
+    const fromX = "987654321".indexOf(usi[0]);
+    const fromY = "abcdefghi".indexOf(usi[1]);
+    const pieceObj = boardState[fromY]?.[fromX];
+    const piece = pieceObj?.piece || "？";
+
+    appendKifu(usi, piece, true, usi.slice(0, 2));  // ✅ 常に後手として扱う
+  }
+}
+
+async function resetGame() {
+  try {
+    const res = await fetch("/reset", { method: "POST" });
+    if (res.ok) {
+      moveCount = 0;
+      kifuLog.length = 0;
+      document.getElementById("kifu-log").innerText = "";
+      await fetchBoardState();
+    }
+  } catch (err) {
+    console.error("リセット失敗:", err);
   }
 }
 
