@@ -1,54 +1,135 @@
 from flask import Flask, request, jsonify, render_template
 import shogi
-import traceback
-import copy
 import random
+import copy
+import time
 
 app = Flask(__name__)
 board = shogi.Board()
 
+
+def minimax(board, depth, alpha, beta, is_ai_turn):
+    if depth == 0 or board.is_game_over():
+        return evaluate_board(board)
+
+    if is_ai_turn:
+        max_eval = float('-inf')
+        for move in board.legal_moves:
+            board.push(move)
+            eval = minimax(board, depth - 1, alpha, beta, False)
+            board.pop()
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break  # βカット（相手がこれ以上の悪手は選ばない）
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for move in board.legal_moves:
+            board.push(move)
+            eval = minimax(board, depth - 1, alpha, beta, True)
+            board.pop()
+            min_eval = min(min_eval, eval)
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break  # αカット（AIがこれ以上の手は選ばない）
+        return min_eval
+
+
+# -------------------------
+# 評価関数：盤面の評価値を計算
+# -------------------------
 def evaluate_board(bd):
     piece_values = {
-        "P": 1,
-        "+P": 5,
-        "L": 3,
-        "+L": 7,
-        "N": 3,
-        "+N": 7,
-        "S": 5,
-        "+S": 9,
-        "G": 6,
-        "B": 8,
-        "+B": 13,
-        "R": 10,
-        "+R": 15,
-        "K": 0
+        "P": 1, "+P": 5, "L": 3, "+L": 7, "N": 3, "+N": 7,
+        "S": 5, "+S": 9, "G": 6, "B": 8, "+B": 13, "R": 10, "+R": 15, "K": 0
     }
 
     score = 0
-    for square in shogi.SQUARES:
-        piece = bd.piece_at(square)
-        if piece:
-            symbol = piece.symbol().upper()
+
+    # 盤上の駒の評価
+    for sq in shogi.SQUARES:
+        p = bd.piece_at(sq)
+        if p:
+            symbol = p.symbol().upper()
             value = piece_values.get(symbol, 0)
-            score += value if piece.color == shogi.WHITE else -value
+            score += value if p.color == shogi.WHITE else -value
+
+    # 持ち駒の評価（後手: +, 先手: -）
+    for color in [shogi.BLACK, shogi.WHITE]:
+        hand = bd.pieces_in_hand[color]
+        for piece_type, count in hand.items():
+            symbol = shogi.PIECE_SYMBOLS[piece_type].upper()
+            value = piece_values.get(symbol, 0) * count
+            score += value if color == shogi.WHITE else -value
+
     return score
 
-    
-def evaluate_move(board, move):
+# -----------------------------------
+# 一手読みの評価関数：合法手を1手ずつ読む
+# -----------------------------------
+def evaluate_move(board, move, time_limit=2.0):
+    start_time = time.time()
+    board.push(move)
 
-    import copy
-    # 1. 現在の盤面を評価
-    before = evaluate_board(board)
-    # 2. 手を適用してから評価
-    temp_board = copy.deepcopy(board)
-    temp_board.push(move)
-    after = evaluate_board(temp_board)
-    # 3. 評価値の差分（AI視点のプラス）
-    return after - before
+    if board.is_checkmate():
+        board.pop()
+        print(f"{move.usi()} → 勝ち（即詰み）: +9999")
+        return 9999
 
+    def minimax(board, depth, alpha, beta, is_ai_turn):
+        if time.time() - start_time > time_limit:
+            raise TimeoutError()
 
+        if depth == 0 or board.is_game_over():
+            return evaluate_board(board)
 
+        if is_ai_turn:
+            max_eval = float('-inf')
+            for mv in board.legal_moves:
+                board.push(mv)
+                try:
+                    eval = minimax(board, depth - 1, alpha, beta, False)
+                except TimeoutError:
+                    board.pop()
+                    raise
+                board.pop()
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for mv in board.legal_moves:
+                board.push(mv)
+                try:
+                    eval = minimax(board, depth - 1, alpha, beta, True)
+                except TimeoutError:
+                    board.pop()
+                    raise
+                board.pop()
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+            return min_eval
+
+    try:
+        score = minimax(board, depth=2, alpha=float('-inf'), beta=float('inf'), is_ai_turn=False)
+    except TimeoutError:
+        score = evaluate_board(board)  # タイムアウト時は現在局面評価
+
+    if move.promotion:
+        score += 2
+
+    board.pop()
+
+    print(f"{move.usi()} → 評価（時間制限付き）: {score}")
+    return score
+# -------------------------
+# 持ち駒をJSON形式で返す
+# -------------------------
 def get_hands_json():
     return {
         "black": {
@@ -63,10 +144,31 @@ def get_hands_json():
         }
     }
 
+# -------------------------
+# フロント用ルート
+# -------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
+# 現在の盤面を返す
+@app.route("/board")
+def get_board():
+    return jsonify({
+        "sfen": board.sfen(),
+        "hands": get_hands_json()
+    })
+
+# ゲームをリセットする
+@app.route("/reset", methods=["POST"])
+def reset():
+    global board
+    board = shogi.Board()
+    return jsonify({"message": "リセット完了"})
+
+# -------------------------
+# プレイヤーの指し手処理
+# -------------------------
 @app.route("/move", methods=["POST"])
 def move():
     global board
@@ -75,53 +177,24 @@ def move():
     to_sq = data.get("to")
     promote = data.get("promote", False)
 
-    print(f"DEBUG: from={from_sq}, to={to_sq}, promote={promote}")
-
     try:
-        # 1. USI作成
+        # USI形式の手を組み立て
         if "*" in from_sq:
-            usi = f"{from_sq.upper()}{to_sq}"  # 打ち駒だけ upper() に
+            usi = f"{from_sq.upper()}{to_sq}"
         else:
             usi = f"{from_sq}{to_sq}"
             if promote:
                 usi += "+"
 
-        print(f"DEBUG: usi={usi}")
+        move_obj = shogi.Move.from_usi(usi)
 
-        # 2. 指し手オブジェクトに変換
-        try:
-            move = shogi.Move.from_usi(usi)
-        except Exception as e:
-            return jsonify({"success": False, "error": f"形式が不正です: {e}"}), 400
+        if move_obj not in board.legal_moves:
+            return jsonify({"success": False, "error": "不正な手です"}), 400
 
-        # 3. 二歩チェック
-        if usi.startswith("P*") and board.turn == shogi.BLACK:
-            file = usi[2]  # 例: "P*7f" → "7"
-            for rank in "abcdefghi":
-                sq = f"{file}{rank}"
-                try:
-                    square = shogi.SQUARE_NAMES.index(sq)
-                    piece = board.piece_at(square)
-                    if piece and piece.piece_type == shogi.PAWN and piece.color == shogi.BLACK:
-                        return jsonify({"success": False, "error": "二歩は禁止です"}), 400
-                except ValueError:
-                    continue
+        # プレイヤーの手を実行
+        board.push(move_obj)
 
-        # 4. 打ち歩詰めチェック
-        if usi.startswith("P*"):
-            temp_board = copy.deepcopy(board)
-            temp_board.push(move)
-            if temp_board.is_checkmate():
-                return jsonify({"success": False, "error": "打ち歩詰めは禁止です"}), 400
-
-        # 5. 合法手か？（最後に実行）
-        if move not in board.legal_moves:
-            return jsonify({"success": False, "error": "不正な手です。"}), 400
-
-        # 6. 手を進める
-        board.push(move)
-
-        # 7. 詰みチェック
+        # 詰み判定
         if board.is_checkmate():
             return jsonify({
                 "success": True,
@@ -131,19 +204,16 @@ def move():
                 "winner": "先手"
             })
 
-        # 8. AI応手
         ai_move_str = None
+        ai_piece = None
 
+        # AIの手を生成（ランダム選択）
         if not board.is_game_over():
-
-            print("=== AI手候補と評価 ===")
             best_score = None
             best_moves = []
 
             for mv in board.legal_moves:
                 score = evaluate_move(board, mv)
-                print(f"{mv.usi()} : 評価値 = {score}")
-
                 if best_score is None or score > best_score:
                     best_score = score
                     best_moves = [mv]
@@ -153,28 +223,26 @@ def move():
             ai_move = random.choice(best_moves)
             board.push(ai_move)
             ai_move_str = ai_move.usi()
-            print(f" AIが選んだ手: {ai_move_str}（評価値: {best_score}）")
-            ai_move_piece = board.piece_at(ai_move.to_square)
+            ai_piece = board.piece_at(ai_move.to_square).symbol()
 
-            #  AIが指した後、詰みかチェック
             if board.is_checkmate():
                 return jsonify({
                     "success": True,
                     "board_sfen": board.sfen(),
                     "hands": get_hands_json(),
                     "ai_move": ai_move_str,
-                    "ai_piece": ai_move_piece.symbol(),
+                    "ai_piece": ai_piece,
                     "game_over": True,
                     "winner": "後手"
                 })
 
-        # 9. 通常応答
+        # 成功レスポンス
         return jsonify({
             "success": True,
             "board_sfen": board.sfen(),
             "hands": get_hands_json(),
             "ai_move": ai_move_str,
-            "ai_piece": ai_move_piece.symbol()
+            "ai_piece": ai_piece
         })
 
     except Exception as e:
@@ -182,22 +250,7 @@ def move():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
-@app.route("/board")
-def get_board():
-    global board
-    return jsonify({
-        "sfen": board.sfen(),
-        "hands": get_hands_json()
-    })
-
-@app.route("/reset", methods=["POST"])
-def reset():
-    global board
-    board = shogi.Board()
-    return jsonify({"message": "リセット完了"})
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     import os
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

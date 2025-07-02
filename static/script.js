@@ -1,3 +1,8 @@
+// ------------------------------
+// 将棋 Web アプリ用クライアントスクリプト
+// 盤面描画、操作、通信、棋譜記録
+// ------------------------------
+
 let selected = null;
 let boardState = [];
 let hands = { black: {}, white: {} };
@@ -8,12 +13,14 @@ const kifuLog = [];
 const fileMap = { 0: "９", 1: "８", 2: "７", 3: "６", 4: "５", 5: "４", 6: "３", 7: "２", 8: "１" };
 const rankMap = { 0: "一", 1: "二", 2: "三", 3: "四", 4: "五", 5: "六", 6: "七", 7: "八", 8: "九" };
 
+// 盤面座標を人間向け表示に変換
 function usiToHuman(usiSq) {
   const file = parseInt(usiSq[0]);
   const rank = "abcdefghi".indexOf(usiSq[1]) + 1;
   return `${file}${rank}`;
 }
 
+// USI形式 → 棋譜表記へ変換
 function usiToKifu(usi, piece, isGote, fromSq = null) {
   const file = parseInt(usi[2]);
   const rankIndex = "abcdefghi".indexOf(usi[3]);
@@ -29,6 +36,7 @@ function usiToKifu(usi, piece, isGote, fromSq = null) {
   return `${moveCount} ${turnSymbol}${toPos}${piece}${src}`;
 }
 
+// 棋譜ログを表示エリアに追加
 function appendKifu(usi, piece, isGote, fromSq = null) {
   const line = usiToKifu(usi, piece, isGote, fromSq);
   kifuLog.push(line);
@@ -36,12 +44,14 @@ function appendKifu(usi, piece, isGote, fromSq = null) {
   if (log) log.innerText = kifuLog.join("\n");
 }
 
+// 駒の記号 → 日本語名に変換
 function pieceSymbol(k) {
   return {
     P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王"
   }[k.toUpperCase()] || "?";
 }
 
+// SFEN → 内部データ構造に変換
 function parseSFEN(sfen) {
   const rows = sfen.split("/");
   const board = [];
@@ -74,6 +84,7 @@ function parseSFEN(sfen) {
   return board;
 }
 
+// 現在の盤面を取得
 async function fetchBoardState() {
   try {
     const res = await fetch("/board");
@@ -87,6 +98,7 @@ async function fetchBoardState() {
   }
 }
 
+// 盤面を描画
 function drawBoard() {
   const board = document.getElementById("board");
   board.innerHTML = "";
@@ -107,6 +119,7 @@ function drawBoard() {
   }
 }
 
+// 持ち駒を描画
 function drawHands() {
   ["white", "black"].forEach(side => {
     const el = document.getElementById(`${side}-hands`);
@@ -127,14 +140,17 @@ function drawHands() {
   });
 }
 
+// 成れる駒か？
 function isPromotable(piece) {
   return ["歩", "香", "銀", "桂", "角", "飛"].includes(piece);
 }
 
+// 成りゾーン（敵陣）か？
 function inPromotionZone(y) {
   return y <= 2;
 }
 
+// セルクリック時の処理
 async function onCellClick(x, y) {
   const to = `${9 - x}${String.fromCharCode(97 + y)}`;
 
@@ -165,13 +181,9 @@ async function onCellClick(x, y) {
       drawBoard();
       drawHands();
 
-      if (data.ai_move) {
-        handleAIMove(data.ai_move);
-      }
+      if (data.ai_move) handleAIMove(data.ai_move);
+      if (data.game_over) alert(`詰みです！${data.winner}の勝ち`);
 
-      if (data.game_over) {
-        alert(`詰みです！${data.winner}の勝ち`);
-      }
     } catch (err) {
       console.error("通信失敗:", err);
     }
@@ -211,22 +223,20 @@ async function onCellClick(x, y) {
         alert(`HTTP ${res.status} エラー: ${data.error}`);
         return;
       }
-      
+
       let fullUsi = from + to;
       if (promote) fullUsi += "+";
       appendKifu(fullUsi, pieceObj.piece, pieceObj.gote, from);
-      if (data.ai_move) {
-        handleAIMove(data.ai_move);
-      }
+
+      if (data.ai_move) handleAIMove(data.ai_move);
 
       boardState = parseSFEN(data.board_sfen.split(" ")[0]);
       hands = data.hands;
       drawBoard();
       drawHands();
 
-      if (data.game_over) {
-        alert(`詰みです！${data.winner}の勝ち`);
-      }
+      if (data.game_over) alert(`詰みです！${data.winner}の勝ち`);
+
     } catch (err) {
       console.error("通信失敗:", err);
     }
@@ -238,20 +248,22 @@ async function onCellClick(x, y) {
   }
 }
 
+// AIの手の棋譜反映
 function handleAIMove(usi) {
   if (usi.includes("*")) {
     const piece = pieceSymbol(usi[0]);
-    appendKifu(usi, piece, true, null);  // 打ち駒：gote = true
+    appendKifu(usi, piece, true, null);
   } else {
     const fromX = "987654321".indexOf(usi[0]);
     const fromY = "abcdefghi".indexOf(usi[1]);
     const pieceObj = boardState[fromY]?.[fromX];
     const piece = pieceObj?.piece || "？";
 
-    appendKifu(usi, piece, true, usi.slice(0, 2));  // ✅ 常に後手として扱う
+    appendKifu(usi, piece, true, usi.slice(0, 2));
   }
 }
 
+// リセット処理
 async function resetGame() {
   try {
     const res = await fetch("/reset", { method: "POST" });
