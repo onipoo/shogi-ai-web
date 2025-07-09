@@ -7,7 +7,6 @@
   border: 2px solid #333;
 }
 
-
 .cell {
   border: 1px solid #999;
   display: flex;
@@ -37,8 +36,43 @@
   background-color: #ffd;
 }
 
-
-
 .gote {
   transform: rotate(180deg);
+}
+
+.ai-move {
+  background-color: yellow;
+}
+
+/* ターン表示 */
+#turn-indicator {
+  font-weight: bold;
+  color: #333;
+}
+
+/* 成り確認ダイアログ */
+.promotion-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.promotion-dialog-content {
+  background: white;
+  padding: 20px;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.promotion-dialog-content button {
+  margin: 0 10px;
+  padding: 10px 20px;
+  font-size: 1em;
 }

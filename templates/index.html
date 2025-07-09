@@ -10,6 +10,7 @@
   <div id="white-hands" class="hands"></div>  <!-- 後手（上） -->
   <div id="board"></div>                      <!-- 将棋盤 -->
   <div id="black-hands" class="hands"></div>  <!-- 先手（下） -->
+  <div id="turn-indicator" style="text-align: center; font-size: 1.2em; margin-top: 10px;">あなたの番です</div>
   <!-- 棋譜表示エリア -->
   <div id="kifu-log"
      style="margin-top: 1em; white-space: pre-line; font-family: monospace; font-size: 1em;
@@ -20,5 +21,14 @@
   <button onclick="resetGame()">リセット</button>
 
   <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+  <!-- 成り確認ダイアログ (最初は非表示) -->
+  <div id="promotion-dialog" class="promotion-dialog-overlay" style="display: none;">
+    <div class="promotion-dialog-content">
+      <p>成りますか？</p>
+      <button id="promote-yes">はい</button>
+      <button id="promote-no">いいえ</button>
+    </div>
+  </div>
 </body>
 </html>
