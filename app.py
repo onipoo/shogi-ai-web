@@ -428,7 +428,7 @@ def debug_mode():
     if request.method == "POST":
         data = request.json
         DEBUG_MODE = bool(data.get("debug", False))
-        return jsonify({"debug_mode": DEBUG_MODE, "message": f"デバッグモードを {"ON" if DEBUG_MODE else "OFF"} にしました"})
+        return jsonify({"debug_mode": DEBUG_MODE, "message": f"デバッグモードを {'ON' if DEBUG_MODE else 'OFF'} にしました"})
     else:
         return jsonify({"debug_mode": DEBUG_MODE})
 
