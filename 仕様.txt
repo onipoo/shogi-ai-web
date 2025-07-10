@@ -8,3 +8,12 @@ Start Commandをpython app.pyとする
 ローカル起動方法
 python app.py
 http://127.0.0.1:5000 で確認
+
+
+デバッグモードの切り替え
+ＯＮ
+curl -X POST -H "Content-Type: application/json" -d "{\"debug\": true}" http://localhost:5000/debug_mode
+ＯＦＦ
+curl -X POST -H "Content-Type: application/json" -d "{\"debug\": false}" http://localhost:5000/debug_mode
+確認
+curl http://localhost:5000/debug_mode

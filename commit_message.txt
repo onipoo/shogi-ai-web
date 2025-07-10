@@ -1,0 +1,1 @@
+Fix: AI move display and update gitignore

@@ -9,7 +9,7 @@ let hands = { black: {}, white: {} };
 let selectedHandPiece = null;
 let moveCount = 0;
 const kifuLog = [];
-let aiLastMove = null;
+let lastMoveHighlighted = null; // 最後に指された手を保持
 let isPlayerTurn = true; // プレイヤーのターンかどうか
 
 // ターン表示を更新
@@ -33,19 +33,30 @@ function usiToHuman(usiSq) {
 }
 
 // USI形式 → 棋譜表記へ変換
-function usiToKifu(usi, piece, isGote, fromSq = null) {
+function usiToKifu(usi, pieceCode, isGote, fromSq = null) {
   const file = parseInt(usi[2]);
   const rankIndex = "abcdefghi".indexOf(usi[3]);
   const toPos = file + "一二三四五六七八九"[rankIndex];
   const turnSymbol = isGote ? "△" : "▲";
   const src = fromSq ? `(${usiToHuman(fromSq)})` : "(打)";
 
+  let pieceName = pieceCode; // SFEN pieceCodeをそのまま使用
+  if (pieceCode.startsWith("+")) {
+    pieceName = pieceCode.substring(1); // 成り駒の場合は+を削除
+  }
+  // 日本語名に変換
+  const pieceNames = {
+    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王",
+    p: "歩", l: "香", n: "桂", s: "銀", g: "金", b: "角", r: "飛", k: "玉"
+  };
+  pieceName = pieceNames[pieceName.toUpperCase()] || pieceName;
+
   if (usi.length === 5 && usi[4] === "+") {
-    piece += "成";
+    pieceName += "成";
   }
 
   moveCount += 1;
-  return `${moveCount} ${turnSymbol}${toPos}${piece}${src}`;
+  return `${moveCount} ${turnSymbol}${toPos}${pieceName}${src}`;
 }
 
 // 棋譜ログを表示エリアに追加
@@ -57,10 +68,14 @@ function appendKifu(usi, piece, isGote, fromSq = null) {
 }
 
 // 駒の記号 → 日本語名に変換
-function pieceSymbol(k) {
-  return {
-    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王"
-  }[k.toUpperCase()] || "?";
+function pieceSymbol(sfenPieceCode) {
+  const pieceMap = {
+    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王",
+    p: "歩", l: "香", n: "桂", s: "銀", g: "金", b: "角", r: "飛", k: "玉",
+    "+P": "と", "+L": "成香", "+N": "成桂", "+S": "成銀", "+B": "馬", "+R": "竜",
+    "+p": "と", "+l": "成香", "+n": "成桂", "+s": "成銀", "+b": "馬", "+r": "竜"
+  };
+  return pieceMap[sfenPieceCode] || "?";
 }
 
 // SFEN → 内部データ構造に変換
@@ -88,7 +103,7 @@ function parseSFEN(sfen) {
           "+P": "と", "+L": "成香", "+N": "成桂", "+S": "成銀", "+B": "馬", "+R": "竜",
           "+p": "と", "+l": "成香", "+n": "成桂", "+s": "成銀", "+b": "馬", "+r": "竜"
         };
-        parsedRow.push({ piece: pieceMap[pieceCode] || "？", gote });
+        parsedRow.push({ piece: pieceCode, gote }); // SFEN pieceCodeを直接保存
       }
     }
     board.push(parsedRow);
@@ -124,16 +139,115 @@ function drawBoard() {
       cell.dataset.y = y;
       const data = boardState[y][x];
       if (data) {
-        cell.textContent = data.piece;
-        if (data.gote) cell.classList.add("gote");
+        // 画像表示とテキスト表示の切り替え
+        const useImages = false; // ここをfalseにするとテキスト表示に戻ります
+
+        if (useImages) {
+          const img = document.createElement("img");
+          // 小文字の駒（後手）も考慮してファイル名を生成
+          const pieceFileName = data.piece.toLowerCase();
+          img.src = `static/images/pieces/${pieceFileName}.png`; // 画像パス
+          img.alt = data.piece; // 代替テキスト
+          img.className = "piece-image"; // CSSクラスを追加
+          if (data.gote) img.classList.add("gote");
+          img.draggable = true; // ドラッグ可能にする
+          img.addEventListener("dragstart", (e) => onDragStart(e, x, y));
+          cell.appendChild(img);
+        } else {
+          cell.textContent = pieceSymbol(data.piece);
+          if (data.gote) cell.classList.add("gote");
+          cell.draggable = true; // ドラッグ可能にする
+          cell.addEventListener("dragstart", (e) => onDragStart(e, x, y));
+        }
       }
-      if (aiLastMove && aiLastMove.x === x && aiLastMove.y === y) {
-        cell.classList.add("ai-move");
+      // 最後の指し手ハイライト
+      if (lastMoveHighlighted && lastMoveHighlighted.x === x && lastMoveHighlighted.y === y) {
+        cell.classList.add("player-move"); // player-moveクラスを流用
       }
       cell.addEventListener("click", () => onCellClick(x, y));
+      // ドロップイベントリスナーを追加
+      cell.addEventListener("dragover", onDragOver);
+      cell.addEventListener("drop", (e) => onDrop(e, x, y));
+      cell.addEventListener("dragleave", onDragLeave);
       board.appendChild(cell);
     }
   }
+}
+
+// ドラッグ開始時の処理
+let draggedFrom = null; // ドラッグ元の座標を保持
+function onDragStart(e, x, y) {
+  if (!isPlayerTurn) {
+    e.preventDefault(); // プレイヤーのターンでなければドラッグを無効化
+    return;
+  }
+  const pieceData = boardState[y][x];
+  if (pieceData && !pieceData.gote) { // 先手の駒のみドラッグ可能
+    draggedFrom = { x, y };
+    e.dataTransfer.setData("text/plain", JSON.stringify({ x, y }));
+    e.dataTransfer.effectAllowed = "move";
+    clearHighlights(); // ドラッグ開始時にハイライトをクリア
+    highlightLegalMoves(x, y); // ドラッグ元の駒の合法手をハイライト
+  } else {
+    e.preventDefault(); // 後手の駒や空のセルはドラッグ不可
+  }
+}
+
+// ドラッグ中の処理
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  // ドロップ可能なセルに視覚的なフィードバックを与える
+  if (e.target.classList.contains("cell") && e.target.classList.contains("highlight-move")) {
+    e.target.classList.add("drag-over");
+  }
+}
+
+// ドラッグがセルから離れた時の処理
+function onDragLeave(e) {
+  if (e.target.classList.contains("cell")) {
+    e.target.classList.remove("drag-over");
+  }
+}
+
+// ドロップ時の処理
+async function onDrop(e, toX, toY) {
+  e.preventDefault();
+  e.target.classList.remove("drag-over");
+
+  const to = `${9 - toX}${String.fromCharCode(97 + toY)}`;
+  let moveData = null;
+
+  if (selectedHandPiece) { // 持ち駒をドロップする場合
+    moveData = { from: `${selectedHandPiece.type}*`, to };
+    selectedHandPiece = null; // 持ち駒選択状態をリセット
+  } else if (draggedFrom) { // 盤上の駒を移動する場合
+    const fromX = draggedFrom.x;
+    const fromY = draggedFrom.y;
+
+    const from = `${9 - fromX}${String.fromCharCode(97 + fromY)}`;
+    const pieceObj = boardState[fromY][fromX];
+    let promote = false;
+
+    if (pieceObj && isPromotable(pieceObj.piece)) {
+      if (inPromotionZone(fromY) || inPromotionZone(toY)) {
+        promote = await askForPromotion();
+      }
+    }
+    moveData = { from, to, promote };
+    draggedFrom = null; // ドラッグ状態をリセット
+  }
+
+  if (moveData) {
+    await sendPlayerMove(moveData);
+  }
+  clearHighlights(); // ハイライトをクリア
+}
+
+// ドラッグ終了時の処理
+function onDragEnd(e) {
+  draggedFrom = null; // ドラッグ状態をリセット
+  clearHighlights(); // ハイライトをクリア
 }
 
 // 持ち駒を描画
@@ -144,11 +258,37 @@ function drawHands() {
     Object.entries(hands[side]).forEach(([k, v]) => {
       if (v > 0) {
         const div = document.createElement("div");
-        div.className = "piece";
-        div.textContent = `${pieceSymbol(k)}×${v}`;
+        div.className = "piece-hand"; // 新しいクラス名
+
+        const useImages = false; // ここをfalseにするとテキスト表示に戻ります
+
+        if (useImages) {
+          const img = document.createElement("img");
+          const pieceFileName = k.toLowerCase();
+          img.src = `static/images/pieces/${pieceFileName}.png`; // 画像パス
+          img.alt = k; // 代替テキスト
+          img.className = "piece-image"; // CSSクラスを追加
+          img.draggable = true; // ドラッグ可能にする
+          img.addEventListener("dragstart", (e) => onHandDragStart(e, k));
+          div.appendChild(img);
+        } else {
+          const pieceText = pieceSymbol(k); // pieceSymbol関数を使用
+          const textNode = document.createTextNode(pieceText);
+          div.appendChild(textNode);
+          div.draggable = true; // ドラッグ可能にする
+          div.addEventListener("dragstart", (e) => onHandDragStart(e, k));
+        }
+
+        const countSpan = document.createElement("span");
+        countSpan.textContent = `×${v}`;
+        div.appendChild(countSpan);
         div.addEventListener("click", () => {
           selectedHandPiece = { side, type: k };
-          document.querySelectorAll(".piece").forEach(p => p.classList.remove("selected-hand"));
+          // 盤上の選択を解除
+          selected = null;
+          clearHighlights(); // 持ち駒選択時にハイライトをクリア
+          // 持ち駒の選択をハイライト
+          document.querySelectorAll(".hands .piece-hand").forEach(p => p.classList.remove("selected-hand"));
           div.classList.add("selected-hand");
         });
         el.appendChild(div);
@@ -156,6 +296,21 @@ function drawHands() {
     });
   });
 }
+
+// 持ち駒のドラッグ開始時の処理
+function onHandDragStart(e, pieceType) {
+  if (!isPlayerTurn) {
+    e.preventDefault();
+    return;
+  }
+  selectedHandPiece = { side: "black", type: pieceType }; // プレイヤーは常に先手
+  e.dataTransfer.setData("text/plain", JSON.stringify({ type: pieceType }));
+  e.dataTransfer.effectAllowed = "move";
+  clearHighlights();
+  // 持ち駒をドラッグした際の合法手ハイライトは、ドロップ時に判断するためここでは行わない
+}
+
+// 成れる駒か？
 
 // 成れる駒か？
 function isPromotable(piece) {
@@ -167,17 +322,21 @@ function inPromotionZone(y) {
   return y <= 2;
 }
 
-// セルクリック時の処理
+  // セルクリック時の処理
 async function onCellClick(x, y) {
   if (!isPlayerTurn) return; // プレイヤーのターンでなければ何もしない
 
   aiLastMove = null;
   const to = `${9 - x}${String.fromCharCode(97 + y)}`;
 
+  // ハイライトをクリア
+  clearHighlights();
+
   // 打ち駒処理
   if (selectedHandPiece) {
     const moveData = { from: `${selectedHandPiece.type}*`, to };
-    await sendMove(moveData);
+    await sendPlayerMove(moveData);
+    selectedHandPiece = null; // 持ち駒選択状態をリセット
     return;
   }
 
@@ -201,18 +360,109 @@ async function onCellClick(x, y) {
     }
 
     const moveData = { from, to, promote };
-    await sendMove(moveData);
+    await sendPlayerMove(moveData);
 
     selected = null;
   } else {
-    selected = [x, y];
-    document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
-    document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`).classList.add("selected");
+    // 駒が選択されていない場合、選択して合法手をハイライト
+    const clickedPiece = boardState[y][x];
+    if (clickedPiece && !clickedPiece.gote) { // 先手の駒のみ選択可能
+      selected = [x, y];
+      document.querySelectorAll(".cell").forEach(c => c.classList.remove("selected"));
+      document.querySelector(`.cell[data-x='${x}'][data-y='${y}']`).classList.add("selected");
+      highlightLegalMoves(x, y);
+    }
+  }
+}
+
+// AIの指し手を取得・反映する関数
+async function getAiMove() {
+  try {
+    const res = await fetch("/get_ai_move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await res.json();
+    console.log('Response from /get_ai_move:', data);
+
+    if (!res.ok) {
+      alert(`HTTP ${res.status} エラー: ${data.error}`);
+      isPlayerTurn = true; // エラー時はターンを戻す
+      updateTurnIndicator();
+      return;
+    }
+
+    if (data.ai_move) {
+      handleAIMove(data.ai_move, data.ai_moved_piece);
+      // AIの指し手後の盤面更新
+      boardState = parseSFEN(data.board_sfen.split(" ")[0]);
+      hands = data.hands;
+      drawBoard();
+      drawHands();
+      console.log('Board re-rendered after AI move.');
+      
+    }
+
+    if (data.game_over) {
+      alert(`詰みです！${data.winner}の勝ち`);
+      isPlayerTurn = false; // ゲーム終了
+    } else {
+      isPlayerTurn = true; // プレイヤーのターンに戻す
+    }
+
+    updateTurnIndicator();
+
+  } catch (err) {
+    console.error("AIの指し手取得失敗:", err);
+    isPlayerTurn = true; // エラー時はターンを戻す
+    updateTurnIndicator();
+  }
+  finally {
+    selected = null;
+    selectedHandPiece = null;
+    document.querySelectorAll(".piece").forEach(p => p.classList.remove("selected-hand"));
+  }
+}
+
+// ハイライトをクリアする関数
+function clearHighlights() {
+  document.querySelectorAll(".highlight-move").forEach(cell => {
+    cell.classList.remove("highlight-move");
+  });
+  document.querySelectorAll(".selected").forEach(cell => {
+    cell.classList.remove("selected");
+  });
+  document.querySelectorAll(".selected-hand").forEach(piece => {
+    piece.classList.remove("selected-hand");
+  });
+}
+
+// 合法手をハイライト表示する関数
+async function highlightLegalMoves(x, y) {
+  const fromSquareUsi = `${9 - x}${String.fromCharCode(97 + y)}`;
+  console.log("Requesting legal moves for square:", fromSquareUsi); // 追加
+  try {
+    const res = await fetch(`/legal_moves/${fromSquareUsi}`);
+    const data = await res.json();
+    if (data.legal_moves) {
+      data.legal_moves.forEach(moveUsi => {
+        const toX = 9 - parseInt(moveUsi[0]);
+        const toY = String.fromCharCode(97 + moveUsi[1]).charCodeAt(0) - 97; // 'a' -> 0, 'b' -> 1 ...
+        const cell = document.querySelector(`.cell[data-x='${toX}'][data-y='${toY}']`);
+        if (cell) {
+          cell.classList.add("highlight-move");
+        }
+      });
+    }
+  } catch (err) {
+    console.error("合法手の取得に失敗:", err);
   }
 }
 
 // AIの手の棋譜反映
 function handleAIMove(usi, movedPieceSymbol) {
+  playerLastMove = null; // プレイヤーの前の指し手ハイライトをクリア
   if (usi.includes("*")) {
     const piece = pieceSymbol(usi[0]);
     appendKifu(usi, piece, true, null);
@@ -225,12 +475,12 @@ function handleAIMove(usi, movedPieceSymbol) {
     appendKifu(usi, piece, true, usi.slice(0, 2));
   }
 
-  // AIの指し手があったマスをハイライトするためにaiLastMoveを設定
+  // AIの指し手があったマスをハイライトするためにlastMoveHighlightedを設定
   // USI形式のto_squareからx, y座標を計算
   const toSquareUsi = usi.slice(-2); // 例: "3d"
   const toX = 9 - parseInt(toSquareUsi[0]); // ファイル (筋)
   const toY = "abcdefghi".indexOf(toSquareUsi[1]); // ランク (段)
-  aiLastMove = { x: toX, y: toY };
+  lastMoveHighlighted = { x: toX, y: toY };
 }
 
 // リセット処理
@@ -242,7 +492,8 @@ async function resetGame() {
       kifuLog.length = 0;
       document.getElementById("kifu-log").innerText = "";
       isPlayerTurn = true;
-      aiLastMove = null;
+      lastMoveHighlighted = null; // 最後の指し手ハイライトをクリア
+      clearHighlights(); // リセット時にハイライトをクリア
       await fetchBoardState();
     }
   } catch (err) {
@@ -269,21 +520,21 @@ function askForPromotion() {
   });
 }
 
-// サーバーに手を送信
-async function sendMove(moveData) {
-  console.log('sendMove called with:', moveData); // 追加: sendMoveが呼び出されたか確認
-  isPlayerTurn = false;
-  updateTurnIndicator();
+// サーバーにプレイヤーの手を送信
+async function sendPlayerMove(moveData) {
+  console.log('sendPlayerMove called with:', moveData);
+  clearHighlights(); // ハイライトをクリア
+  aiLastMove = null; // AIの前の指し手ハイライトをクリア
 
   try {
-    const res = await fetch("/move", {
+    const res = await fetch("/player_move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(moveData)
     });
 
     const data = await res.json();
-    console.log('Response from /move:', data); // 追加: サーバーからの応答を確認
+    console.log('Response from /player_move:', data);
 
     if (!res.ok) {
       alert(`HTTP ${res.status} エラー: ${data.error}`);
@@ -294,36 +545,39 @@ async function sendMove(moveData) {
 
     // プレイヤーの指し手を棋譜に追加
     const fromSq = moveData.from.includes("*") ? null : moveData.from;
-    const piece = fromSq ? boardState["abcdefghi".indexOf(fromSq[1])][9 - parseInt(fromSq[0])].piece : pieceSymbol(moveData.from[0]);
+    const pieceCodeForKifu = fromSq ? boardState["abcdefghi".indexOf(fromSq[1])][9 - parseInt(fromSq[0])].piece : moveData.from[0];
     let fullUsi = moveData.from.includes("*") ? `${moveData.from}${moveData.to}` : `${moveData.from}${moveData.to}`;
     if (moveData.promote) fullUsi += "+";
-    appendKifu(fullUsi, piece, false, fromSq);
+    appendKifu(fullUsi, pieceCodeForKifu, false, fromSq);
 
-    // 盤面更新
+    // 盤面更新（プレイヤーの指し手を反映）
+    // プレイヤーの指し手があったマスをハイライトするためにlastMoveHighlightedを設定
+    const toSquareUsi = moveData.to; // 例: "3d"
+    const toX = 9 - parseInt(toSquareUsi[0]); // ファイル (筋)
+    const toY = "abcdefghi".indexOf(toSquareUsi[1]); // ランク (段)
+    lastMoveHighlighted = { x: toX, y: toY };
+
+    // 盤面更新（プレイヤーの指し手を反映）
     boardState = parseSFEN(data.board_sfen.split(" ")[0]);
     hands = data.hands;
     drawBoard();
     drawHands();
-    console.log('Board re-rendered after player move.'); // 追加: 盤面が再描画されたことを確認
+    console.log('Board re-rendered after player move.');
 
-    if (data.ai_move) {
-      handleAIMove(data.ai_move, data.ai_moved_piece);
-      // AIの指し手後の盤面更新
-      boardState = parseSFEN(data.board_sfen.split(" ")[0]);
-      hands = data.hands;
-      drawBoard();
-      drawHands();
-      console.log('Board re-rendered after AI move.'); // 追加: 盤面が再描画されたことを確認
-    }
-
+    // プレイヤーの指し手でゲームが終了した場合
     if (data.game_over) {
       alert(`詰みです！${data.winner}の勝ち`);
       isPlayerTurn = false; // ゲーム終了
-    } else {
-      isPlayerTurn = true;
+      updateTurnIndicator();
+      return;
     }
 
-    updateTurnIndicator();
+    // AIのターンに切り替え
+    isPlayerTurn = false; 
+    updateTurnIndicator(); // 「AIが考慮中です...」と表示
+
+    // AIの指し手を取得
+    await getAiMove();
 
   } catch (err) {
     console.error("通信失敗:", err);

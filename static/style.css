@@ -15,6 +15,17 @@
   font-size: 24px;
   cursor: pointer;
   user-select: none;
+  position: relative; /* 画像配置のため */
+}
+
+.piece-image {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+
+.gote .piece-image {
+  transform: rotate(180deg);
 }
 
 .hands {
@@ -25,12 +36,24 @@
   gap: 10px;
 }
 
-.hands .piece {
+.piece-hand {
   padding: 4px 8px;
   border: 1px solid #666;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
+.piece-hand .piece-image {
+  width: 40px; /* 持ち駒の画像のサイズ調整 */
+  height: 40px;
+}
+
+.selected-hand {
+  background-color: #add8e6; /* 薄い青色でハイライト */
+  border: 2px solid #007bff;
+}
 
 .selected {
   background-color: #ffd;
@@ -42,6 +65,20 @@
 
 .ai-move {
   background-color: yellow;
+}
+
+.player-move {
+  background-color: yellow; /* AIと同じ黄色 */
+}
+
+.highlight-move {
+  background-color: #aaffaa; /* 薄い緑色でハイライト */
+  border: 2px solid #008000;
+}
+
+.drag-over {
+  background-color: #cceeff; /* ドロップ可能なセルをハイライト */
+  border: 2px dashed #007bff;
 }
 
 /* ターン表示 */

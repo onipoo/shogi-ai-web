@@ -7,6 +7,8 @@ import time
 app = Flask(__name__)
 board = shogi.Board()
 
+DEBUG_MODE = False # デバッグモードの初期設定
+
 
 def minimax(board, depth, alpha, beta, is_ai_turn):
     if depth == 0 or board.is_game_over():
@@ -191,7 +193,8 @@ def evaluate_move(board, move, time_limit=2.0):
 
     if board.is_checkmate():
         board.pop()
-        print(f"{move.usi()} → 勝ち（即詰み）: +9999")
+        if DEBUG_MODE:
+            print(f"{move.usi()} → 勝ち（即詰み）: +9999")
         return 9999
 
     def minimax(board, depth, alpha, beta, is_ai_turn):
@@ -242,7 +245,8 @@ def evaluate_move(board, move, time_limit=2.0):
 
     board.pop()
 
-    print(f"{move.usi()} → 評価（時間制限付き）: {score}")
+    if DEBUG_MODE:
+        print(f"{move.usi()} → 評価（時間制限付き）: {score}")
     return score
 # -------------------------
 # 持ち駒をJSON形式で返す
@@ -276,6 +280,22 @@ def get_board():
         "hands": get_hands_json()
     })
 
+# 指定されたマスの合法手を返す
+@app.route("/legal_moves/<square>")
+def get_legal_moves(square):
+    try:
+        print(f"Received square: '{square}'") # デバッグ用に追加
+        from_sq_int = shogi.SQUARE_NAMES.index(square)
+        legal_moves_for_square = []
+        for move in board.legal_moves:
+            if move.from_square == from_sq_int:
+                legal_moves_for_square.append(shogi.SQUARE_NAMES[move.to_square])
+        return jsonify({"legal_moves": legal_moves_for_square})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 # ゲームをリセットする
 @app.route("/reset", methods=["POST"])
 def reset():
@@ -286,8 +306,8 @@ def reset():
 # -------------------------
 # プレイヤーの指し手処理
 # -------------------------
-@app.route("/move", methods=["POST"])
-def move():
+@app.route("/player_move", methods=["POST"])
+def player_move():
     global board
     data = request.json
     from_sq = data.get("from")
@@ -321,53 +341,96 @@ def move():
                 "winner": "先手"
             })
 
-        ai_move_str = None
-        ai_piece = None
-
-        # AIの手を生成（ランダム選択）
-        if not board.is_game_over():
-            best_score = None
-            best_moves = []
-
-            for mv in board.legal_moves:
-                score = evaluate_move(board, mv)
-                if best_score is None or score > best_score:
-                    best_score = score
-                    best_moves = [mv]
-                elif score == best_score:
-                    best_moves.append(mv)
-
-            ai_move = random.choice(best_moves)
-            # AIが動かす駒のシンボルを取得（移動前）
-            ai_moved_piece_symbol = board.piece_at(ai_move.from_square).symbol() if ai_move.from_square else None
-
-            board.push(ai_move)
-            ai_move_str = ai_move.usi()
-
-            if board.is_checkmate():
-                return jsonify({
-                    "success": True,
-                    "board_sfen": board.sfen(),
-                    "hands": get_hands_json(),
-                    "ai_move": ai_move_str,
-                    "ai_moved_piece": ai_moved_piece_symbol,
-                    "game_over": True,
-                    "winner": "後手"
-                })
-
         # 成功レスポンス
         return jsonify({
             "success": True,
             "board_sfen": board.sfen(),
             "hands": get_hands_json(),
-            "ai_move": ai_move_str,
-            "ai_moved_piece": ai_moved_piece_symbol
+            "game_over": False # プレイヤーの指し手ではゲーム終了しない
         })
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+# -------------------------
+# AIの指し手処理
+# -------------------------
+@app.route("/get_ai_move", methods=["POST"])
+def get_ai_move():
+    global board
+
+    if board.is_game_over():
+        return jsonify({"success": False, "error": "ゲームは終了しています"}), 400
+
+    try:
+        move_scores = []
+        for mv in board.legal_moves:
+            score = evaluate_move(board, mv)
+            move_scores.append((score, mv))
+
+        if not move_scores: # No legal moves
+            return jsonify({"success": False, "error": "合法手がありません"}), 400
+
+        # Find the maximum score
+        best_score = max(s for s, mv in move_scores)
+
+        # Define a tolerance for "good enough" moves
+        # This value might need tuning. A small value like 10-20 is a starting point.
+        tolerance = 10 # Example: consider moves within 10 points of the best score
+
+        # Collect all moves that are within the tolerance of the best score
+        good_enough_moves = []
+        for score, mv in move_scores:
+            if score >= best_score - tolerance:
+                good_enough_moves.append(mv)
+
+        # Randomly select from the good_enough_moves
+        ai_move = random.choice(good_enough_moves)
+        # AIが動かす駒のシンボルを取得（移動前）
+        ai_moved_piece_symbol = board.piece_at(ai_move.from_square).symbol() if ai_move.from_square else None
+
+        board.push(ai_move)
+        ai_move_str = ai_move.usi()
+
+        if board.is_checkmate():
+            return jsonify({
+                "success": True,
+                "board_sfen": board.sfen(),
+                "hands": get_hands_json(),
+                "ai_move": ai_move_str,
+                "ai_moved_piece": ai_moved_piece_symbol,
+                "game_over": True,
+                "winner": "後手"
+            })
+
+        return jsonify({
+            "success": True,
+            "board_sfen": board.sfen(),
+            "hands": get_hands_json(),
+            "ai_move": ai_move_str,
+            "ai_moved_piece": ai_moved_piece_symbol,
+            "game_over": False
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# -------------------------
+# デバッグモード切り替え
+# -------------------------
+@app.route("/debug_mode", methods=["GET", "POST"])
+def debug_mode():
+    global DEBUG_MODE
+    if request.method == "POST":
+        data = request.json
+        DEBUG_MODE = bool(data.get("debug", False))
+        return jsonify({"debug_mode": DEBUG_MODE, "message": f"デバッグモードを {"ON" if DEBUG_MODE else "OFF"} にしました"})
+    else:
+        return jsonify({"debug_mode": DEBUG_MODE})
 
 if __name__ == "__main__":
     import os
