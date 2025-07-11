@@ -10,7 +10,7 @@ board = shogi.Board()
 DEBUG_MODE = False # デバッグモードの初期設定
 
 
-def minimax(board, depth, alpha, beta, is_ai_turn):
+def minimax(board, depth, alpha, beta, is_ai_turn, start_time, time_limit):
     if depth == 0 or board.is_game_over():
         return evaluate_board(board)
 
@@ -47,7 +47,7 @@ def minimax(board, depth, alpha, beta, is_ai_turn):
         max_eval = float('-inf')
         for score, move in moves_with_scores:
             board.push(move)
-            eval = minimax(board, depth - 1, alpha, beta, False)
+            eval = minimax(board, depth - 1, alpha, beta, False, start_time, time_limit)
             board.pop()
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
@@ -58,7 +58,7 @@ def minimax(board, depth, alpha, beta, is_ai_turn):
         min_eval = float('inf')
         for score, move in moves_with_scores:
             board.push(move)
-            eval = minimax(board, depth - 1, alpha, beta, True)
+            eval = minimax(board, depth - 1, alpha, beta, True, start_time, time_limit)
             board.pop()
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
@@ -213,99 +213,72 @@ def evaluate_board(bd):
 
     return score
 
-# -----------------------------------
-# 一手読みの評価関数：合法手を1手ずつ読む
-# -----------------------------------
-def evaluate_move(board, move, time_limit=2.0):
+
+def find_best_move_iterative_deepening(board, time_limit=3.0):
     start_time = time.time()
-    board.push(move)
+    best_move = None
+    best_score = float('-inf')
 
-    if board.is_checkmate():
-        board.pop()
-        if DEBUG_MODE:
-            print(f"{move.usi()} → 勝ち（即詰み）: +9999")
-        return 9999
+    # 合法手がなければNoneを返す
+    if not board.legal_moves:
+        return None
 
-    def minimax(board, depth, alpha, beta, is_ai_turn):
-        if time.time() - start_time > time_limit:
-            raise TimeoutError()
+    # 探索深度を1から開始し、時間切れになるまで深くしていく
+    for depth in range(1, 100):  # 深度は適当な上限を設定
+        current_best_move_for_depth = None
+        current_best_score_for_depth = float('-inf')
 
-        if depth == 0 or board.is_game_over():
-            return evaluate_board(board)
-
-        # 指し手の並べ替えのためのスコア計算
+        # 指し手の並べ替えのためのスコア計算 (ここでも行うことで、浅い深度でも効率化)
         moves_with_scores = []
         piece_values = {
             "P": 100, "+P": 500, "L": 300, "+L": 700, "N": 300, "+N": 700,
             "S": 500, "+S": 900, "G": 600, "B": 800, "+B": 1300, "R": 1000, "+R": 1500, "K": 10000
         }
-        for mv in board.legal_moves:
+        for move in board.legal_moves:
             score = 0
-            # 捕獲の評価
-            captured_piece = board.piece_at(mv.to_square)
+            captured_piece = board.piece_at(move.to_square)
             if captured_piece:
                 captured_symbol = captured_piece.symbol().upper()
                 score += piece_values.get(captured_symbol, 0)
-
-            # 成りの評価
-            if mv.promotion:
+            if move.promotion:
                 score += 200
-
-            # 王手の評価 (簡易的)
-            board.push(mv)
+            board.push(move)
             if board.is_check():
                 score += 100
             board.pop()
-
-            moves_with_scores.append((score, mv))
-
-        # スコアの高い順にソート
+            moves_with_scores.append((score, move))
         moves_with_scores.sort(key=lambda x: x[0], reverse=True)
 
-        if is_ai_turn:
-            max_eval = float('-inf')
-            for score, mv in moves_with_scores:
-                board.push(mv)
-                try:
-                    eval = minimax(board, depth - 1, alpha, beta, False)
-                except TimeoutError:
-                    board.pop()
-                    raise
+        try:
+            for score, move in moves_with_scores:
+                board.push(move)
+                # ミニマックス探索を呼び出す
+                eval = minimax(board, depth - 1, float('-inf'), float('inf'), False, start_time, time_limit)
                 board.pop()
-                max_eval = max(max_eval, eval)
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
-            return max_eval
-        else:
-            min_eval = float('inf')
-            for score, mv in moves_with_scores:
-                board.push(mv)
-                try:
-                    eval = minimax(board, depth - 1, alpha, beta, True)
-                except TimeoutError:
-                    board.pop()
-                    raise
-                board.pop()
-                min_eval = min(min_eval, eval)
-                beta = min(beta, eval)
-                if beta <= alpha:
-                    break
-            return min_eval
 
-    try:
-        score = minimax(board, depth=2, alpha=float('-inf'), beta=float('inf'), is_ai_turn=False)
-    except TimeoutError:
-        score = evaluate_board(board)  # タイムアウト時は現在局面評価
+                if eval > current_best_score_for_depth: # AIは最大化側なので、より高い評価値を探す
+                    current_best_score_for_depth = eval
+                    current_best_move_for_depth = move
 
-    if move.promotion:
-        score += 2
+                # 時間切れチェック
+                if time.time() - start_time > time_limit:
+                    raise TimeoutError()
 
-    board.pop()
+            # この深度での最善手が見つかったら、それを記録
+            best_move = current_best_move_for_depth
+            best_score = current_best_score_for_depth
 
-    if DEBUG_MODE:
-        print(f"{move.usi()} → 評価（時間制限付き）: {score}")
-    return score
+        except TimeoutError:
+            # 時間切れになったら、それまでに最も深く探索できた深度での最善手を返す
+            if DEBUG_MODE:
+                print(f"Time out at depth {depth}. Returning best move found so far.")
+            break # ループを抜ける
+
+        if DEBUG_MODE:
+            print(f"Finished depth {depth}. Best move: {best_move.usi() if best_move else 'None'}, Score: {best_score}")
+
+    return best_move
+
 # -------------------------
 # 持ち駒をJSON形式で返す
 # -------------------------
@@ -423,29 +396,12 @@ def get_ai_move():
         return jsonify({"success": False, "error": "ゲームは終了しています"}), 400
 
     try:
-        move_scores = []
-        for mv in board.legal_moves:
-            score = evaluate_move(board, mv)
-            move_scores.append((score, mv))
+        # 反復深化でAIの指し手を取得
+        ai_move = find_best_move_iterative_deepening(board, time_limit=3.0) # 3秒の時間制限
 
-        if not move_scores: # No legal moves
+        if not ai_move: # 合法手がなければ
             return jsonify({"success": False, "error": "合法手がありません"}), 400
 
-        # Find the maximum score
-        best_score = max(s for s, mv in move_scores)
-
-        # Define a tolerance for "good enough" moves
-        # This value might need tuning. A small value like 10-20 is a starting point.
-        tolerance = 10 # Example: consider moves within 10 points of the best score
-
-        # Collect all moves that are within the tolerance of the best score
-        good_enough_moves = []
-        for score, mv in move_scores:
-            if score >= best_score - tolerance:
-                good_enough_moves.append(mv)
-
-        # Randomly select from the good_enough_moves
-        ai_move = random.choice(good_enough_moves)
         # AIが動かす駒のシンボルを取得（移動前）
         ai_moved_piece_symbol = board.piece_at(ai_move.from_square).symbol() if ai_move.from_square else None
 
