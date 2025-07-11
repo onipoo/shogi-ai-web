@@ -40,19 +40,21 @@ function usiToKifu(usi, pieceCode, isGote, fromSq = null) {
   const turnSymbol = isGote ? "△" : "▲";
   const src = fromSq ? `(${usiToHuman(fromSq)})` : "(打)";
 
-  let pieceName = pieceCode; // SFEN pieceCodeをそのまま使用
-  if (pieceCode.startsWith("+")) {
-    pieceName = pieceCode.substring(1); // 成り駒の場合は+を削除
-  }
-  // 日本語名に変換
-  const pieceNames = {
-    P: "歩", L: "香", N: "桂", S: "銀", G: "金", B: "角", R: "飛", K: "王",
-    p: "歩", l: "香", n: "桂", s: "銀", g: "金", b: "角", r: "飛", k: "玉"
-  };
-  pieceName = pieceNames[pieceName.toUpperCase()] || pieceName;
+  // pieceSymbol関数を使って日本語名を取得
+  let pieceName = pieceSymbol(pieceCode);
 
+  // もし、この指し手で成った場合（USIの末尾が'+'）で、
+  // かつpieceSymbolが成る前の駒の名前を返している場合（例: '歩'）
+  // にのみ'成'を追加する。
+  // pieceSymbolが既に成駒の名前（例: 'と'）を返している場合は追加しない。
   if (usi.length === 5 && usi[4] === "+") {
-    pieceName += "成";
+    const unpromotedPieceCode = pieceCode.startsWith("+") ? pieceCode.substring(1) : pieceCode;
+    if (["P", "L", "N", "S", "B", "R"].includes(unpromotedPieceCode.toUpperCase())) {
+        // 既に成駒の日本語名になっている場合は追加しない
+        if (!["と", "成香", "成桂", "成銀", "馬", "竜"].includes(pieceName)) {
+            pieceName += "成";
+        }
+    }
   }
 
   moveCount += 1;
@@ -314,7 +316,10 @@ function onHandDragStart(e, pieceType) {
 
 // 成れる駒か？
 function isPromotable(piece) {
-  return ["歩", "香", "銀", "桂", "角", "飛"].includes(piece);
+  // SFENシンボルで判定
+  const promotableSFEN = ["P", "L", "N", "S", "B", "R"];
+  // 小文字（後手）の場合も考慮
+  return promotableSFEN.includes(piece.toUpperCase());
 }
 
 // 成りゾーン（敵陣）か？
@@ -463,16 +468,15 @@ async function highlightLegalMoves(x, y) {
 // AIの手の棋譜反映
 function handleAIMove(usi, movedPieceSymbol) {
   playerLastMove = null; // プレイヤーの前の指し手ハイライトをクリア
+  let pieceForKifu;
   if (usi.includes("*")) {
-    const piece = pieceSymbol(usi[0]);
-    appendKifu(usi, piece, true, null);
+    // 持ち駒を打つ場合、usiの最初の文字が駒のSFENシンボル
+    pieceForKifu = usi[0];
+    appendKifu(usi, pieceForKifu, true, null);
   } else {
-    const fromX = "987654321".indexOf(usi[0]);
-    const fromY = "abcdefghi".indexOf(usi[1]);
-    const pieceObj = boardState[fromY]?.[fromX];
-    const piece = pieceSymbol(movedPieceSymbol);
-
-    appendKifu(usi, piece, true, usi.slice(0, 2));
+    // 盤上の駒を動かす場合、movedPieceSymbolがSFENシンボル
+    pieceForKifu = movedPieceSymbol;
+    appendKifu(usi, pieceForKifu, true, usi.slice(0, 2));
   }
 
   // AIの指し手があったマスをハイライトするためにlastMoveHighlightedを設定

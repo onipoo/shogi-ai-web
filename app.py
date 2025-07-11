@@ -14,27 +14,56 @@ def minimax(board, depth, alpha, beta, is_ai_turn):
     if depth == 0 or board.is_game_over():
         return evaluate_board(board)
 
+    # 指し手の並べ替えのためのスコア計算
+    moves_with_scores = []
+    piece_values = {
+        "P": 100, "+P": 500, "L": 300, "+L": 700, "N": 300, "+N": 700,
+        "S": 500, "+S": 900, "G": 600, "B": 800, "+B": 1300, "R": 1000, "+R": 1500, "K": 10000
+    }
+    for move in board.legal_moves:
+        score = 0
+        # 捕獲の評価
+        captured_piece = board.piece_at(move.to_square)
+        if captured_piece:
+            captured_symbol = captured_piece.symbol().upper()
+            score += piece_values.get(captured_symbol, 0)
+
+        # 成りの評価
+        if move.promotion:
+            score += 200
+
+        # 王手の評価 (簡易的)
+        board.push(move)
+        if board.is_check():
+            score += 100
+        board.pop()
+
+        moves_with_scores.append((score, move))
+
+    # スコアの高い順にソート
+    moves_with_scores.sort(key=lambda x: x[0], reverse=True)
+
     if is_ai_turn:
         max_eval = float('-inf')
-        for move in board.legal_moves:
+        for score, move in moves_with_scores:
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, False)
             board.pop()
             max_eval = max(max_eval, eval)
             alpha = max(alpha, eval)
             if beta <= alpha:
-                break  # βカット（相手がこれ以上の悪手は選ばない）
+                break
         return max_eval
     else:
         min_eval = float('inf')
-        for move in board.legal_moves:
+        for score, move in moves_with_scores:
             board.push(move)
             eval = minimax(board, depth - 1, alpha, beta, True)
             board.pop()
             min_eval = min(min_eval, eval)
             beta = min(beta, eval)
             if beta <= alpha:
-                break  # αカット（AIがこれ以上の手は選ばない）
+                break
         return min_eval
 
 
@@ -204,9 +233,38 @@ def evaluate_move(board, move, time_limit=2.0):
         if depth == 0 or board.is_game_over():
             return evaluate_board(board)
 
+        # 指し手の並べ替えのためのスコア計算
+        moves_with_scores = []
+        piece_values = {
+            "P": 100, "+P": 500, "L": 300, "+L": 700, "N": 300, "+N": 700,
+            "S": 500, "+S": 900, "G": 600, "B": 800, "+B": 1300, "R": 1000, "+R": 1500, "K": 10000
+        }
+        for mv in board.legal_moves:
+            score = 0
+            # 捕獲の評価
+            captured_piece = board.piece_at(mv.to_square)
+            if captured_piece:
+                captured_symbol = captured_piece.symbol().upper()
+                score += piece_values.get(captured_symbol, 0)
+
+            # 成りの評価
+            if mv.promotion:
+                score += 200
+
+            # 王手の評価 (簡易的)
+            board.push(mv)
+            if board.is_check():
+                score += 100
+            board.pop()
+
+            moves_with_scores.append((score, mv))
+
+        # スコアの高い順にソート
+        moves_with_scores.sort(key=lambda x: x[0], reverse=True)
+
         if is_ai_turn:
             max_eval = float('-inf')
-            for mv in board.legal_moves:
+            for score, mv in moves_with_scores:
                 board.push(mv)
                 try:
                     eval = minimax(board, depth - 1, alpha, beta, False)
@@ -221,7 +279,7 @@ def evaluate_move(board, move, time_limit=2.0):
             return max_eval
         else:
             min_eval = float('inf')
-            for mv in board.legal_moves:
+            for score, mv in moves_with_scores:
                 board.push(mv)
                 try:
                     eval = minimax(board, depth - 1, alpha, beta, True)
@@ -434,5 +492,10 @@ def debug_mode():
 
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # FLASK_ENVが'development'の場合のみ開発サーバーを起動
+    if os.environ.get("FLASK_ENV") == "development":
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port)
+    else:
+        # 本番環境ではGunicornなどのWSGIサーバーがappを起動するため、ここでは何もしない
+        print("Running in production mode. Gunicorn or another WSGI server should be used.")
