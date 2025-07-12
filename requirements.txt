@@ -3,3 +3,4 @@ gunicorn
 requests
 python-shogi
 numpy
+Flask-APScheduler
