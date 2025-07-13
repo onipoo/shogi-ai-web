@@ -11,7 +11,6 @@ let moveCount = 0;
 const kifuLog = [];
 let lastMoveHighlighted = null; // 最後に指された手を保持
 let isPlayerTurn = true; // プレイヤーのターンかどうか
-let aiMovePollInterval = null; // AIの指し手ポーリング用のインターバルID
 
 // ターン表示を更新
 function updateTurnIndicator() {
@@ -305,14 +304,8 @@ async function onCellClick(x, y) {
   }
 }
 
-// ポーリングを開始する関数
-function startPollingForAiMove() {
-  if (aiMovePollInterval) return;
-  aiMovePollInterval = setInterval(getAiMove, 1000); // 1秒ごとにAIの手をチェック
-}
-
-// AIの指し手を取得・反映する関数 (ポーリング対応)
-async function getAiMove() {
+// AIの指し手を取得・反映する関数
+async function requestAiMove() {
   try {
     const res = await fetch("/get_ai_move", {
       method: "POST",
@@ -320,24 +313,13 @@ async function getAiMove() {
     });
 
     const data = await res.json();
-    console.log('Polling /get_ai_move:', data);
 
     if (!res.ok) {
-      alert(`HTTP ${res.status} エラー: ${data.error}`);
-      isPlayerTurn = true;
-      updateTurnIndicator();
-      clearInterval(aiMovePollInterval);
-      aiMovePollInterval = null;
+      alert(`AIエラー: ${data.error || '不明なエラー'}`);
+      // エラーが発生してもターンはAIのままにして、リトライできるようにするなどの選択肢も考えられる
+      // ここではシンプルに処理を中断
       return;
     }
-
-    if (data.thinking) {
-      return; // AIがまだ思考中なら、何もせずに次のポーリングを待つ
-    }
-
-    // AIの手が返ってきたらポーリングを停止
-    clearInterval(aiMovePollInterval);
-    aiMovePollInterval = null;
 
     if (data.ai_move) {
       handleAIMove(data.ai_move, data.ai_moved_piece);
@@ -357,10 +339,8 @@ async function getAiMove() {
 
   } catch (err) {
     console.error("AIの指し手取得失敗:", err);
-    isPlayerTurn = true;
-    updateTurnIndicator();
-    clearInterval(aiMovePollInterval);
-    aiMovePollInterval = null;
+    alert("AIとの通信に失敗しました。サーバーの応答がタイムアウトした可能性があります。");
+    // UIを「AI考慮中」のままにして、フリーズしたことを分かりやすくする
   }
 }
 
@@ -404,10 +384,6 @@ function handleAIMove(usi, movedPieceSymbol) {
 }
 
 async function resetGame() {
-  if (aiMovePollInterval) {
-    clearInterval(aiMovePollInterval);
-    aiMovePollInterval = null;
-  }
   try {
     const res = await fetch("/reset", { method: "POST" });
     if (res.ok) {
@@ -419,7 +395,8 @@ async function resetGame() {
       clearHighlights();
       await fetchBoardState();
     }
-  } catch (err) {
+  }
+ catch (err) {
     console.error("リセット失敗:", err);
   }
 }
@@ -481,7 +458,7 @@ async function sendPlayerMove(moveData) {
 
     isPlayerTurn = false;
     updateTurnIndicator();
-    startPollingForAiMove();
+    await requestAiMove(); // ★変更点：ポーリングをやめて、直接AIの応答を待つ
 
   } catch (err) {
     console.error("通信失敗:", err);
