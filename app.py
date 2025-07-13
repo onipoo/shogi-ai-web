@@ -274,35 +274,33 @@ def player_move():
 
 @app.route("/get_ai_move", methods=["POST"])
 def get_ai_move():
-    global board, ponder_move
+    global board
     if board.is_game_over():
         return jsonify({"success": False, "error": "ゲームは終了しています"}), 400
 
-    if ponder_move:
-        ai_move = ponder_move
-        ponder_move = None
+    # Ponderingを無効化し、ここで直接AIの思考を呼び出す
+    # Renderの環境を考慮して、思考時間は非常に短く設定
+    ai_move = find_best_move_iterative_deepening(board, time_limit=0.5)
 
-        if ai_move not in board.legal_moves:
-            if DEBUG_MODE: print("DEBUG: Pondered move is illegal. Recalculating...")
-            ai_move = find_best_move_iterative_deepening(board, time_limit=1.0)
-
-        if not ai_move:
+    if not ai_move:
+        # もし万が一手が見つからなかった場合（時間切れなど）
+        # ランダムな手を返すフォールバック
+        if list(board.legal_moves):
+            ai_move = random.choice(list(board.legal_moves))
+        else:
             return jsonify({"success": False, "error": "合法手がありません"}), 400
 
-        ai_moved_piece_symbol = board.piece_at(ai_move.from_square).symbol() if ai_move.from_square else None
-        board.push(ai_move)
-        
-        game_over = board.is_checkmate()
-        winner = "後手" if game_over else None
+    ai_moved_piece_symbol = board.piece_at(ai_move.from_square).symbol() if ai_move.from_square else None
+    board.push(ai_move)
+    
+    game_over = board.is_checkmate()
+    winner = "後手" if game_over else None
 
-        return jsonify({
-            "success": True, "board_sfen": board.sfen(), "hands": get_hands_json(),
-            "ai_move": ai_move.usi(), "ai_moved_piece": ai_moved_piece_symbol,
-            "game_over": game_over, "winner": winner
-        })
-    else:
-        # Ponderが終わっていない場合
-        return jsonify({"success": False, "thinking": True})
+    return jsonify({
+        "success": True, "board_sfen": board.sfen(), "hands": get_hands_json(),
+        "ai_move": ai_move.usi(), "ai_moved_piece": ai_moved_piece_symbol,
+        "game_over": game_over, "winner": winner
+    })
 
 @app.route("/debug_mode", methods=["GET", "POST"])
 def debug_mode():
