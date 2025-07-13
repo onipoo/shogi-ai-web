@@ -280,7 +280,7 @@ def get_ai_move():
 
     # Ponderingを無効化し、ここで直接AIの思考を呼び出す
     # Renderの環境を考慮して、思考時間は非常に短く設定
-    ai_move = find_best_move_iterative_deepening(board, time_limit=0.5)
+    ai_move = find_best_move_iterative_deepening(board, time_limit=3.0)
 
     if not ai_move:
         # もし万が一手が見つからなかった場合（時間切れなど）
