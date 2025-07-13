@@ -27,7 +27,7 @@ def start_ponder_task():
         # Ponder用に盤面をコピーして探索
         ponder_board = copy.deepcopy(board)
         # Ponderなので少し長めに思考させる
-        move = find_best_move_iterative_deepening(ponder_board, time_limit=5.0)
+        move = find_best_move_iterative_deepening(ponder_board, time_limit=1.0)
         ponder_move = move
         if DEBUG_MODE:
             print(f"DEBUG: Ponder finished. Best move: {ponder_move.usi() if ponder_move else 'None'}")
